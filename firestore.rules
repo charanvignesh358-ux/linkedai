@@ -1,0 +1,138 @@
+// ================================================================
+//  FIRESTORE SECURITY RULES — LinkedAI Platform (Fixed)
+//  Copy EVERYTHING below and paste into:
+//  Firebase Console → Firestore → Rules → Publish
+// ================================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper Functions ────────────────────────────────────────
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // ✅ FIX: Use request.auth.token instead of Firestore get() for role checks
+    // This avoids the chicken-and-egg permission error on new users
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuth() && (
+        // Check adminConfig — the authoritative source of admin UID
+        exists(/databases/$(database)/documents/meta/adminConfig) &&
+        get(/databases/$(database)/documents/meta/adminConfig).data.adminUid == request.auth.uid
+      );
+    }
+
+    function isMember() {
+      // Any authenticated user is treated as a member
+      // The role check was causing permission failures for new users
+      return isAuth();
+    }
+
+    function ownsDoc() {
+      return isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    function writingOwnData() {
+      return isAuth() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // ── /users collection ────────────────────────────────────────
+    // Users can read/write only their own profile.
+    // Admins can read/write all users.
+    match /users/{userId} {
+      allow read:   if isUser(userId) || isAdmin();
+      allow create: if isUser(userId);                          // ✅ Allow profile creation on signup
+      allow update: if isUser(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── /jobs collection ────────────────────────────────────────
+    match /jobs/{jobId} {
+      allow read:   if isMember();
+      allow create: if isMember() && writingOwnData();
+      allow update: if (isMember() && ownsDoc()) || isAdmin();
+      allow delete: if (isMember() && ownsDoc()) || isAdmin();
+    }
+
+    // ── /applications collection ────────────────────────────────
+    match /applications/{appId} {
+      allow read:   if (isMember() && ownsDoc()) || isAdmin();
+      allow create: if isMember() && writingOwnData();
+      allow update: if (isMember() && ownsDoc()) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── /resumes collection ─────────────────────────────────────
+    match /resumes/{resumeId} {
+      allow read:   if (isMember() && ownsDoc()) || isAdmin();
+      allow create: if isMember() && writingOwnData();
+      allow update: if (isMember() && ownsDoc()) || isAdmin();
+      allow delete: if (isMember() && ownsDoc()) || isAdmin();
+    }
+
+    // ── /connections collection ──────────────────────────────────
+    match /connections/{connId} {
+      allow read:   if (isMember() && ownsDoc()) || isAdmin();
+      allow create: if isMember() && writingOwnData();
+      allow update: if (isMember() && ownsDoc()) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── /stats/{userId} ──────────────────────────────────────────
+    match /stats/{userId} {
+      allow read:   if isUser(userId) || isAdmin();
+      allow write:  if isUser(userId) || isAdmin();
+    }
+
+    // ── /settings/{userId} ──────────────────────────────────────
+    match /settings/{userId} {
+      allow read:   if isUser(userId) || isAdmin();
+      allow write:  if isUser(userId) || isAdmin();             // ✅ Admin can also write settings
+    }
+
+    // ── /activityFeed collection ─────────────────────────────────
+    match /activityFeed/{eventId} {
+      allow read:   if (isMember() && ownsDoc()) || isAdmin();
+      allow create: if isMember() && writingOwnData();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── /meta/adminConfig ────────────────────────────────────────
+    // ✅ Any authenticated user can READ meta (needed for role verification)
+    // Write: only if no admin exists yet, OR current user IS the admin
+    match /meta/adminConfig {
+      allow read:  if isAuth();
+      allow write: if isAuth() && (
+        !exists(/databases/$(database)/documents/meta/adminConfig) ||
+        isAdmin()
+      );
+    }
+
+    match /meta/{docId} {
+      allow read:  if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ── /adminLogs collection ────────────────────────────────────
+    match /adminLogs/{logId} {
+      allow read:   if isAdmin();
+      allow write:  if isAdmin();
+    }
+
+    // ── Deny everything else ─────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

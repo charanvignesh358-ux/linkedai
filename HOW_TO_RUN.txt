@@ -1,0 +1,166 @@
+================================================================
+  LinkedAI — HOW TO RUN  (v4.0)
+================================================================
+
+PREREQUISITES
+─────────────
+• Node.js 18+  (https://nodejs.org)
+• Chrome/Chromium installed via Playwright
+• Firebase project: linkedin-6fea9  (already configured)
+• A LinkedIn account with valid credentials
+
+================================================================
+  STEP 1 — Firebase Service Account (ONE-TIME SETUP)
+================================================================
+
+The backend now writes stats, applications, and connections
+directly to Firestore using Firebase Admin SDK. This means
+your dashboard updates even if the browser tab is closed.
+
+  1. Go to: https://console.firebase.google.com
+  2. Select project: linkedin-6fea9
+  3. Project Settings → Service Accounts tab
+  4. Click "Generate new private key"
+  5. Rename the downloaded file to: serviceAccountKey.json
+  6. Move it to:
+       Production1\backend\firebase\serviceAccountKey.json
+
+================================================================
+  STEP 2 — Install Dependencies
+================================================================
+
+  Option A: Double-click setup_backend.bat  (easiest)
+
+  Option B: Manual
+    cd backend
+    npm install          ← installs firebase-admin + all deps
+    npx playwright install chromium
+
+  Frontend:
+    cd Production1       ← root of the project
+    npm install
+
+================================================================
+  STEP 3 — Configure Your Settings
+================================================================
+
+  1. Open the app (npm start in the root folder)
+  2. Sign in with your account
+  3. Go to Settings page
+  4. Fill in:
+     • LinkedIn Email    (your LinkedIn login)
+     • LinkedIn Password (your LinkedIn password)
+     • Search Keywords   (e.g. "React Developer, Frontend Engineer")
+     • Search Location   (e.g. "India" or "Bangalore, Mumbai")
+     • Max Applications/Day  (recommended: 5–10)
+     • Max Connections/Day   (recommended: 10–20)
+  5. Click Save Settings
+
+================================================================
+  STEP 4 — Start the Backend
+================================================================
+
+  Open a terminal:
+    cd Production1\backend
+    node server.js
+
+  You should see:
+    🚀 LinkedAI Backend running on http://localhost:4000
+    🔥 Firebase Admin: initialised via serviceAccountKey.json
+
+  Leave this terminal open while using the app.
+
+================================================================
+  STEP 5 — Start the Frontend
+================================================================
+
+  Open another terminal:
+    cd Production1
+    npm start
+
+  The app opens at http://localhost:3000
+
+================================================================
+  STEP 6 — Run the Pipeline
+================================================================
+
+  1. Go to "Manager Agent" page
+  2. Verify the debug panel shows:
+       ✅ Email: your@email.com
+       ✅ UID: abc123...
+       ✅ Keywords: React Developer...
+  3. Click "Run Pipeline"
+  4. Watch the live feed — stats update in real-time as each
+     agent phase completes:
+       🔭 Scout    → jobsFound counter increments
+       📝 Applier  → applied counter increments
+       🤝 Networker→ connections counter increments
+  5. Dashboard will show updated numbers immediately
+
+================================================================
+  WHAT EACH PAGE SHOWS
+================================================================
+
+  Dashboard        — Live stats from Firestore (auto-refreshes)
+  Job Search       — 15 demo jobs + any scanned by Scout
+  Applications     — All jobs you applied to (Kanban/Table)
+  Networking       — LinkedIn connections + bot controls
+  Manager Agent    — Full pipeline orchestration + live feed
+  Settings         — Your LinkedIn credentials + preferences
+
+================================================================
+  TROUBLESHOOTING
+================================================================
+
+  ❌ "Stats stuck at 0"
+     → Make sure serviceAccountKey.json is in backend/firebase/
+     → Check backend terminal for Firebase Admin init message
+     → Click "Refresh Stats" on the Dashboard
+
+  ❌ "Cannot reach backend"
+     → Run: cd backend && node server.js
+     → Make sure port 4000 is not blocked
+
+  ❌ "Login failed — check email/password"
+     → Verify credentials in Settings page
+     → Try logging into linkedin.com manually first
+
+  ❌ "LinkedIn requires verification"
+     → Complete the CAPTCHA in the opened browser window
+     → Then re-run the pipeline
+
+  ❌ "Firebase Admin: ALL PATHS failed"
+     → Download serviceAccountKey.json from Firebase Console
+     → Place it in backend/firebase/serviceAccountKey.json
+
+================================================================
+  FILE STRUCTURE
+================================================================
+
+  Production1/
+  ├── src/
+  │   ├── agents/
+  │   │   ├── managerAgent.js     ← rate limiter, security
+  │   │   └── pipelineRunner.js   ← SSE client (XHR)
+  │   ├── context/
+  │   │   └── AppContext.js       ← global state + Firestore
+  │   ├── firebase/
+  │   │   ├── config.js           ← Firebase client config
+  │   │   └── firebaseService.js  ← Firestore CRUD helpers
+  │   └── pages/
+  │       ├── Dashboard.js
+  │       ├── ManagerAgent.js     ← pipeline orchestration UI
+  │       └── Networking.js       ← networking bot UI
+  └── backend/
+      ├── firebase/
+      │   ├── admin.js            ← Firebase Admin SDK
+      │   └── serviceAccountKey.json  ← YOU MUST ADD THIS
+      ├── agents/
+      │   ├── pipeline.js         ← Scout/Applier/Networker
+      │   ├── linkedin.js         ← Playwright automation
+      │   └── groq.js             ← AI scoring
+      ├── routes/
+      │   └── agent.js            ← SSE endpoint
+      └── server.js               ← Express server
+
+================================================================

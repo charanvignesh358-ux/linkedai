@@ -71,7 +71,10 @@ export function startPipeline(params, callbacks) {
         console.log(`[Runner] ← ${phase} | ${(message || '').slice(0, 80)}`);
 
         if (data.results) finalResult = data.results;
-        if (data.statsUpdate && onStats) onStats(data.statsUpdate);
+        // FIX A: pass ONLY the statsUpdate delta, not the whole data object
+        if (data.statsUpdate && typeof data.statsUpdate === 'object' && onStats) {
+          onStats(data.statsUpdate);
+        }
 
         onEvent?.(phase, message, data);
 

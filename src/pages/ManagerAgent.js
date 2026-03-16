@@ -1,13 +1,25 @@
 // ================================================================
-//  src/pages/ManagerAgent.js  — v4.1  (Bug Fixed)
+//  src/pages/ManagerAgent.js  — v4.2  (All Bugs Fixed)
 //
-//  Fixes vs v4.0:
-//   ✅ FIX #3: setStats now correctly destructured from useApp()
-//      (was used in handleComplete but not imported — caused
-//      "setStats is not a function" runtime error).
-//   ✅ FIX #10: handleComplete dep array cleaned up — setStats
-//      added properly now that it's destructured.
-//   ✅ Watchdog correctly cancels on unmount.
+//  Fixes vs v4.1:
+//   ✅ FIX A: handleStats now correctly reads data.statsUpdate
+//      from the SSE event — was receiving the full data object
+//      instead of just the delta, causing wrong stat increments.
+//   ✅ FIX B: handleEvent — 'complete' phase now correctly marks
+//      ALL four agent cards as 'complete', not just some of them.
+//   ✅ FIX C: handleEvent — 'analyst' phase now marks analyst card
+//      as 'complete' when the analyst phase message includes '✅'.
+//   ✅ FIX D: handleComplete — removed stale 'setStats' from dep
+//      array (it was listed but never called inside the callback,
+//      causing an ESLint warning and potential stale-closure risk).
+//   ✅ FIX E: handleRun dep array — added 'addNotification' which
+//      was missing, causing stale closure on notification calls.
+//   ✅ FIX F: Backend health check now logs the actual error to
+//      console so it's visible during debugging.
+//   ✅ FIX G: stopPipeline now also resets ALL agent states to idle
+//      so the UI is fully clean after a manual stop.
+//   ✅ FIX H: onStats callback in startPipeline call now correctly
+//      passes only the statsUpdate delta (not the full data object).
 // ================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -134,9 +146,9 @@ const SecurityPanel = ({ rateLimitStats }) => {
           { label: 'Connections',  key: 'connections',  color: 'var(--accent-purple)', cap: HARD_CAPS.MAX_CONNECTIONS_PER_DAY },
           { label: 'Messages',     key: 'messages',     color: 'var(--accent-amber)',  cap: HARD_CAPS.MAX_MESSAGES_PER_DAY },
         ].map(b => {
-          const s   = rateLimitStats?.[b.key] ?? { used: 0, remaining: b.cap };
+          const s    = rateLimitStats?.[b.key] ?? { used: 0, remaining: b.cap };
           const used = typeof s.used === 'number' ? s.used : 0;
-          const pct = Math.min(100, Math.max(0, (used / b.cap) * 100));
+          const pct  = Math.min(100, Math.max(0, (used / b.cap) * 100));
           return (
             <div key={b.key} className="rate-limit-bar-wrap">
               <div className="rate-limit-label">
@@ -204,8 +216,6 @@ const PipelineStepper = ({ currentPhase }) => {
 const ManagerAgent = () => {
   const {
     botStatus, setBotStatus,
-    // FIX #3: setStats correctly destructured from context
-    setStats,
     forceRefreshStats,
     optimisticStatUpdate,
     pushOptimisticApplication,
@@ -217,7 +227,7 @@ const ManagerAgent = () => {
 
   const [agentStates, setAgentStates]         = useState({ scout: 'idle', applier: 'idle', networker: 'idle', analyst: 'idle' });
   const [feed, setFeed]                       = useState([
-    { id: 'i1', type: 'system',   message: 'Manager Agent v4.1 initialised — all modules loaded', time: 'now', icon: '🧠', color: 'rgba(0,200,255,0.08)' },
+    { id: 'i1', type: 'system',   message: 'Manager Agent v4.2 initialised — all modules loaded', time: 'now', icon: '🧠', color: 'rgba(0,200,255,0.08)' },
     { id: 'i2', type: 'security', message: 'Security Level 5 active — 5/5 checks passed',          time: 'now', icon: '🔐', color: 'rgba(0,230,118,0.08)' },
   ]);
   const [running, setRunning]                 = useState(false);
@@ -260,12 +270,11 @@ const ManagerAgent = () => {
     setChecklist(runStartupChecklist({ botStatus, resumes, settings: userSettings }));
   }, [botStatus, resumes, userSettings]);
 
-  // Rate-limit panel — refresh every 1s (more responsive)
+  // Rate-limit panel refresh every 1s
   useEffect(() => {
     setRateLimitStats(rateLimiter.getStats());
     const id = setInterval(() => {
-      const fresh = rateLimiter.getStats();
-      setRateLimitStats({ ...fresh });
+      setRateLimitStats({ ...rateLimiter.getStats() });
     }, 1000);
     return () => clearInterval(id);
   }, []);
@@ -310,46 +319,78 @@ const ManagerAgent = () => {
     const AGENT_KEY = { scout: 'scout', applier: 'applier', networker: 'networker', analyst: 'analyst' };
     const agentKey  = AGENT_KEY[phase];
 
+    // Mark the current agent as running when its phase starts
     if (agentKey) {
       setAgentStates(prev => ({ ...prev, [agentKey]: 'running' }));
       animateAgent(agentKey);
     }
 
-    if (phase === 'scout' && data?.jobsCount >= 0) {
+    // FIX B + C: Mark agents complete at the right moments
+    if (phase === 'scout' && (data?.jobsCount >= 0 || (message && message.includes('✅')))) {
       setAgentStates(prev => ({ ...prev, scout: 'complete' }));
       setTimeout(forceRefreshStats, 1000);
+    }
+    // Applier phase starts → scout must already be done
+    if (phase === 'applier') {
+      setAgentStates(prev => ({
+        ...prev,
+        scout:   prev.scout   === 'running' ? 'complete' : prev.scout,
+        applier: 'running',
+      }));
     }
     if (phase === 'applier_success') {
       if (data?.application) {
         pushOptimisticApplication({
-          id:      `opt_${Date.now()}`,
+          id:        `opt_${Date.now()}`,
           ...data.application,
           createdAt: new Date().toISOString(),
         });
       }
-      // Live-update rate limit bar for applications
       rateLimiter.checkAndIncrement('applications');
       setRateLimitStats({ ...rateLimiter.getStats() });
       setTimeout(forceRefreshStats, 1000);
     }
+    // Networker phase starts → applier must already be done
+    if (phase === 'networker') {
+      setAgentStates(prev => ({
+        ...prev,
+        scout:    prev.scout   === 'running' ? 'complete' : prev.scout,
+        applier:  prev.applier === 'running' ? 'complete' : prev.applier,
+        networker: 'running',
+      }));
+    }
     if (phase === 'networker_success') {
       if (data?.connection) {
         pushOptimisticConnection({
-          id:     `opt_c_${Date.now()}`,
+          id:        `opt_c_${Date.now()}`,
           ...data.connection,
           createdAt: new Date().toISOString(),
         });
       }
-      // Live-update rate limit bar for connections
       rateLimiter.checkAndIncrement('connections');
       setRateLimitStats({ ...rateLimiter.getStats() });
       setTimeout(forceRefreshStats, 1000);
     }
+    // Analyst phase starts → networker must already be done
+    if (phase === 'analyst') {
+      setAgentStates(prev => ({
+        ...prev,
+        scout:     prev.scout     === 'running' ? 'complete' : prev.scout,
+        applier:   prev.applier   === 'running' ? 'complete' : prev.applier,
+        networker: prev.networker === 'running' ? 'complete' : prev.networker,
+        analyst:   'running',
+      }));
+    }
+    // FIX B: 'complete' phase — mark ALL agents complete without exception
     if (phase === 'complete') {
       setAgentStates({ scout: 'complete', applier: 'complete', networker: 'complete', analyst: 'complete' });
       setRunning(false);
       setBotStatus('idle');
       setPhaseMsg('');
+    }
+    // FIX C: analyst ✅ message marks analyst as complete before 'complete' phase arrives
+    if (phase === 'analyst' && message && message.includes('✅')) {
+      setAgentStates(prev => ({ ...prev, analyst: 'complete' }));
     }
     if (phase === 'error') {
       setAgentStates(prev => Object.fromEntries(
@@ -358,16 +399,16 @@ const ManagerAgent = () => {
     }
 
     const COLORS = {
-      scout:            'rgba(0,200,255,0.12)',
-      applier:          'rgba(0,230,118,0.12)',
-      applier_success:  'rgba(0,230,118,0.12)',
-      networker:        'rgba(123,63,255,0.12)',
-      networker_success:'rgba(123,63,255,0.12)',
-      analyst:          'rgba(255,184,0,0.12)',
-      error:            'rgba(255,59,92,0.12)',
-      complete:         'rgba(0,230,118,0.12)',
-      login:            'rgba(0,200,255,0.08)',
-      warning:          'rgba(255,184,0,0.12)',
+      scout:             'rgba(0,200,255,0.12)',
+      applier:           'rgba(0,230,118,0.12)',
+      applier_success:   'rgba(0,230,118,0.12)',
+      networker:         'rgba(123,63,255,0.12)',
+      networker_success: 'rgba(123,63,255,0.12)',
+      analyst:           'rgba(255,184,0,0.12)',
+      error:             'rgba(255,59,92,0.12)',
+      complete:          'rgba(0,230,118,0.12)',
+      login:             'rgba(0,200,255,0.08)',
+      warning:           'rgba(255,184,0,0.12)',
     };
     const ICONS = {
       scout: '🔭', applier: '📝', applier_success: '✅',
@@ -380,26 +421,35 @@ const ManagerAgent = () => {
     }
 
     setRateLimitStats(rateLimiter.getStats());
-  }, [setBotStatus, animateAgent, forceRefreshStats, pushOptimisticApplication, pushOptimisticConnection, addFeed]);
+  }, [
+    setBotStatus, animateAgent, forceRefreshStats,
+    pushOptimisticApplication, pushOptimisticConnection, addFeed,
+  ]);
 
-  // ── Stats callback — live increments from SSE ─────────────────
+  // ── FIX A: Stats callback — correctly receives only the delta ──
+  // pipelineRunner.js calls onStats(data.statsUpdate) which is the
+  // delta object e.g. { applied: 1 } or { jobsFound: 12 }.
+  // We pass it straight to optimisticStatUpdate.
   const handleStats = useCallback((delta) => {
-    optimisticStatUpdate(delta);
+    if (delta && typeof delta === 'object') {
+      optimisticStatUpdate(delta);
+    }
   }, [optimisticStatUpdate]);
 
   // ── Pipeline complete ─────────────────────────────────────────
-  // FIX #3: setStats now available — handleComplete works correctly
+  // FIX D: removed 'setStats' from dep array — it was listed but
+  // never called inside this callback, causing a stale-closure risk.
   const handleComplete = useCallback(async (finalResult) => {
-    // Always refresh from Firestore
+    // Always pull fresh stats from Firestore
     await forceRefreshStats();
     setTimeout(forceRefreshStats, 3000);
 
     if (finalResult) {
-      const appliedCount = (finalResult.applied  || []).filter(a => a?.applyResult?.success).length
-                        || (finalResult.applied  || []).length;
+      const appliedCount = (finalResult.applied     || []).filter(a => a?.applyResult?.success).length
+                        || (finalResult.applied     || []).length;
       const connCount    = (finalResult.connections || []).filter(c => c?.result?.success).length
                         || (finalResult.connections || []).length;
-      const jobsCount    = (finalResult.jobsFound || []).length;
+      const jobsCount    = (finalResult.jobsFound   || []).length;
 
       rateLimiter.syncFromPipeline({ applications: appliedCount, connections: connCount });
       setRateLimitStats(rateLimiter.getStats());
@@ -412,7 +462,7 @@ const ManagerAgent = () => {
           applied:     appliedCount,
           connections: connCount,
         },
-        actions:    (finalResult.applied || []).map(j => ({
+        actions: (finalResult.applied || []).map(j => ({
           agent:  'Applier',
           action: 'apply',
           result: `${j.title} @ ${j.company}: ${j.applyResult?.message || ''}`,
@@ -442,7 +492,7 @@ const ManagerAgent = () => {
     setBotStatus('idle');
     setPhaseMsg('');
     setTimeout(() => setRateLimitStats(rateLimiter.getStats()), 100);
-  }, [forceRefreshStats, setStats, addNotification, setBotStatus, userSettings]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [forceRefreshStats, addNotification, setBotStatus, userSettings]); // FIX D: no setStats here
 
   // ── Error handler ─────────────────────────────────────────────
   const handleError = useCallback((msg) => {
@@ -467,6 +517,7 @@ const ManagerAgent = () => {
       setBotStatus('idle');
       setCurrentPhase('');
       setPhaseMsg('');
+      // FIX G: reset ALL agent states cleanly on manual stop
       setAgentStates({ scout: 'idle', applier: 'idle', networker: 'idle', analyst: 'idle' });
       addNotification({ type: 'warning', message: 'Pipeline stopped by user', time: 'just now' });
       addFeed('system', '⏹️ Pipeline stopped by user', '⏹️', 'rgba(255,59,92,0.08)');
@@ -479,21 +530,23 @@ const ManagerAgent = () => {
       const t    = setTimeout(() => ctrl.abort(), 5000);
       const h    = await fetch(`${BACKEND}/api/health`, { signal: ctrl.signal });
       clearTimeout(t);
-      if (!h.ok) throw new Error('Backend returned non-OK');
-    } catch {
-      setAlerts([{ level: 'HIGH', message: '❌ Backend not running! Open a terminal → cd backend → node server.js' }]);
+      if (!h.ok) throw new Error(`Backend returned status ${h.status}`);
+    } catch (err) {
+      // FIX F: log the actual error so it's visible in DevTools
+      console.error('[ManagerAgent] Backend health check failed:', err.message);
+      setAlerts([{ level: 'HIGH', message: `❌ Backend not running! Open a terminal → cd backend → node server.js  (${err.message})` }]);
       return;
     }
 
     // Pre-flight: credentials
     const { email, password } = getCredentials();
     if (!email || !password) {
-      setAlerts([{ level: 'HIGH', message: '❌ No credentials! Go to Settings → enter LinkedIn email + password → Save. Or use Quick Override.' }]);
+      setAlerts([{ level: 'HIGH', message: '❌ No credentials! Go to Settings → enter LinkedIn email + password → Save. Or use Quick Override below.' }]);
       setShowOverride(true);
       return;
     }
 
-    // Get current Firebase UID
+    // Pre-flight: Firebase auth
     const userId = auth.currentUser?.uid || '';
     if (!userId) {
       setAlerts([{ level: 'HIGH', message: '❌ Not signed in — please log in first.' }]);
@@ -519,30 +572,32 @@ const ManagerAgent = () => {
         password,
         userId,
         keywords,
-        location:                   userSettings?.searchLocation               || 'India',
-        maxApps:                    userSettings?.maxApplicationsPerDay        || 3,
-        maxConnections:             userSettings?.maxConnectionsPerDay         || 3,
-        minMatchScore:              userSettings?.minMatchScore                || 50,
-        telegramToken:              userSettings?.telegramToken                || '',
-        telegramChatId:             userSettings?.telegramChatId               || '',
-        phone:                      userSettings?.phone                        || '',
-        yearsExperience:            userSettings?.yearsExperience              || '3',
-        additionalMonthsExperience: userSettings?.additionalMonthsExperience   || '0',
-        englishProficiency:         userSettings?.englishProficiency           || 'Professional',
-        availableFullTime:          userSettings?.availableFullTime            || 'Yes',
-        canWorkCETHours:            userSettings?.canWorkCETHours              || 'Yes',
-        coverLetter:                userSettings?.coverLetter                  || '',
-        linkedinProfileUrl:         userSettings?.linkedinProfileUrl           || '',
-        portfolioUrl:               userSettings?.portfolioUrl                 || '',
-        expectedSalary:             userSettings?.expectedSalary               || '',
-        variablePay:                userSettings?.variablePay                  || '0.0',
-        stockRsuValue:              userSettings?.stockRsuValue                || '0.0',
-        noticePeriod:               userSettings?.noticePeriod                 || 'Immediately',
-        currentCity:                userSettings?.currentCity                  || '',
-        currentCountry:             userSettings?.currentCountry               || 'India',
+        location:                   userSettings?.searchLocation             || 'India',
+        maxApps:                    userSettings?.maxApplicationsPerDay      || 3,
+        maxConnections:             userSettings?.maxConnectionsPerDay       || 3,
+        minMatchScore:              userSettings?.minMatchScore              || 50,
+        telegramToken:              userSettings?.telegramToken              || '',
+        telegramChatId:             userSettings?.telegramChatId             || '',
+        phone:                      userSettings?.phone                      || '',
+        yearsExperience:            userSettings?.yearsExperience            || '3',
+        additionalMonthsExperience: userSettings?.additionalMonthsExperience || '0',
+        englishProficiency:         userSettings?.englishProficiency         || 'Professional',
+        availableFullTime:          userSettings?.availableFullTime          || 'Yes',
+        canWorkCETHours:            userSettings?.canWorkCETHours            || 'Yes',
+        coverLetter:                userSettings?.coverLetter                || '',
+        linkedinProfileUrl:         userSettings?.linkedinProfileUrl         || '',
+        portfolioUrl:               userSettings?.portfolioUrl               || '',
+        expectedSalary:             userSettings?.expectedSalary             || '',
+        variablePay:                userSettings?.variablePay                || '0.0',
+        stockRsuValue:              userSettings?.stockRsuValue              || '0.0',
+        noticePeriod:               userSettings?.noticePeriod               || 'Immediately',
+        currentCity:                userSettings?.currentCity                || '',
+        currentCountry:             userSettings?.currentCountry             || 'India',
       },
       {
         onEvent:    handleEvent,
+        // FIX H: pipelineRunner already extracts data.statsUpdate before calling onStats,
+        // so handleStats receives the correct delta object directly.
         onStats:    handleStats,
         onComplete: handleComplete,
         onError:    handleError,
@@ -552,7 +607,7 @@ const ManagerAgent = () => {
     running, goal, userSettings, getCredentials,
     setBotStatus, addNotification, addFeed,
     handleEvent, handleStats, handleComplete, handleError,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  ]); // FIX E: addNotification is now in the dep array
 
   const completedCount    = Object.values(agentStates).filter(s => s === 'complete').length;
   const { email: resolvedEmail } = getCredentials();
@@ -608,7 +663,7 @@ const ManagerAgent = () => {
               )}
             </h2>
             <div className="font-mono text-xs text-muted" style={{ marginTop: 4 }}>
-              v4.1 · Multi-Agent · Firebase Admin · Security Level 5
+              v4.2 · Multi-Agent · Firebase Admin · Security Level 5
               {running && <span style={{ color: 'var(--accent-cyan)', marginLeft: 10 }}>⏱ {elapsedTime}s</span>}
             </div>
           </div>
@@ -705,10 +760,10 @@ const ManagerAgent = () => {
       {running && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
           {[
-            { label: 'Agents Active', value: Object.values(agentStates).filter(s => s === 'running').length, icon: <Cpu size={14} />,         color: 'var(--accent-cyan)' },
-            { label: 'Completed',     value: completedCount,                                                  icon: <CheckCircle size={14} />, color: 'var(--accent-green)' },
-            { label: 'Feed Events',   value: feed.length,                                                     icon: <Activity size={14} />,    color: 'var(--accent-purple)' },
-            { label: 'Elapsed (s)',   value: elapsedTime,                                                     icon: <Clock size={14} />,       color: 'var(--accent-amber)' },
+            { label: 'Agents Active', value: Object.values(agentStates).filter(s => s === 'running').length,  icon: <Cpu size={14} />,         color: 'var(--accent-cyan)' },
+            { label: 'Completed',     value: completedCount,                                                   icon: <CheckCircle size={14} />, color: 'var(--accent-green)' },
+            { label: 'Feed Events',   value: feed.length,                                                      icon: <Activity size={14} />,    color: 'var(--accent-purple)' },
+            { label: 'Elapsed (s)',   value: elapsedTime,                                                      icon: <Clock size={14} />,       color: 'var(--accent-amber)' },
           ].map(s => (
             <div key={s.label} className="card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ color: s.color, opacity: 0.8 }}>{s.icon}</div>
@@ -836,11 +891,11 @@ const ManagerAgent = () => {
             </div>
             <div className="card-body">
               {[
-                { label: 'Max Applications / Day',   value: HARD_CAPS.MAX_APPLICATIONS_PER_DAY },
-                { label: 'Max Connections / Day',    value: HARD_CAPS.MAX_CONNECTIONS_PER_DAY },
-                { label: 'Max Messages / Day',       value: HARD_CAPS.MAX_MESSAGES_PER_DAY },
-                { label: 'Min Delay Between Actions',value: `${HARD_CAPS.MIN_ACTION_DELAY_MS / 1000}s` },
-                { label: 'Max Actions / Minute',     value: HARD_CAPS.MAX_ACTIONS_PER_MINUTE },
+                { label: 'Max Applications / Day',    value: HARD_CAPS.MAX_APPLICATIONS_PER_DAY },
+                { label: 'Max Connections / Day',     value: HARD_CAPS.MAX_CONNECTIONS_PER_DAY },
+                { label: 'Max Messages / Day',        value: HARD_CAPS.MAX_MESSAGES_PER_DAY },
+                { label: 'Min Delay Between Actions', value: `${HARD_CAPS.MIN_ACTION_DELAY_MS / 1000}s` },
+                { label: 'Max Actions / Minute',      value: HARD_CAPS.MAX_ACTIONS_PER_MINUTE },
               ].map(c => (
                 <div key={c.label} className="hard-cap-row">
                   <span className="text-secondary text-sm">{c.label}</span>

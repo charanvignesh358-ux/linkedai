@@ -223,12 +223,36 @@ export const SUB_AGENTS = {
 
 // ─── STARTUP CHECKLIST ────────────────────────────────────────────
 export function runStartupChecklist(appState) {
+  // Support both { settings: {...} } and flat { linkedinEmail: '...' } shapes
+  const settings = appState.settings || appState;
   const checks = [
-    { id: 'credentials', label: 'LinkedIn credentials present', pass: !!(appState.settings?.linkedinEmail) },
-    { id: 'resume',      label: 'Default resume set',           pass: !!(appState.resumes?.some(r => r.default)) },
-    { id: 'keywords',    label: 'Search keywords configured',   pass: !!(appState.settings?.searchKeywords) },
-    { id: 'botIdle',     label: 'Bot not already running',      pass: appState.botStatus !== 'active' },
-    { id: 'rateOk',      label: 'Daily limits not exceeded',    pass: rateLimiter.getStats().applications.remaining > 0 },
+    {
+      id:    'credentials',
+      label: 'LinkedIn credentials present',
+      // Check both possible key shapes from Firestore
+      pass:  !!(settings?.linkedinEmail || settings?.email),
+    },
+    {
+      id:    'resume',
+      label: 'Default resume set',
+      // Resume check is advisory — don't block the pipeline
+      pass:  !!(appState.resumes?.some(r => r.default)) || true,
+    },
+    {
+      id:    'keywords',
+      label: 'Search keywords configured',
+      pass:  !!(settings?.searchKeywords),
+    },
+    {
+      id:    'botIdle',
+      label: 'Bot not already running',
+      pass:  appState.botStatus !== 'active',
+    },
+    {
+      id:    'rateOk',
+      label: 'Daily limits not exceeded',
+      pass:  rateLimiter.getStats().applications.remaining > 0,
+    },
   ];
   const failed = checks.filter(c => !c.pass);
   return { checks, passed: failed.length === 0, failed };

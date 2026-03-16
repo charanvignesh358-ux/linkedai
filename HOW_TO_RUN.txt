@@ -98,6 +98,16 @@ your dashboard updates even if the browser tab is closed.
   5. Dashboard will show updated numbers immediately
 
 ================================================================
+  MOBILE / PHONE USAGE
+================================================================
+
+  The app now works on mobile browsers (phone, tablet)!
+  • Tap the ☰ (hamburger) button top-left to open the menu
+  • Tap outside the menu or the X button to close it
+  • All pages are responsive and work on small screens
+  • The app is accessible at your Vercel URL from any device
+
+================================================================
   WHAT EACH PAGE SHOWS
 ================================================================
 

@@ -222,14 +222,15 @@ Return ONLY valid JSON (no markdown):
     <div className="page-content animate-fade">
 
       {/* ── HEADER ── */}
+      {/* ── HEADER ── */}
       <div style={{
-        padding: '28px 32px', marginBottom: 24,
+        padding: '28px 32px', marginBottom: 20,
         background: 'linear-gradient(135deg, rgba(0,200,255,0.06), rgba(123,63,255,0.06))',
         border: '1px solid rgba(0,200,255,0.12)', borderRadius: 'var(--radius-xl)',
         position: 'relative', overflow: 'hidden',
       }}>
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, var(--accent-cyan), var(--accent-purple))' }} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
             <div style={{
               width: 56, height: 56, borderRadius: 16, fontSize: 26,
@@ -254,6 +255,25 @@ Return ONLY valid JSON (no markdown):
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── WHO IS THIS FOR? ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
+        {[
+          { icon: '🎓', title: 'Students', desc: 'Ace campus placement interviews with real-world question practice and instant AI scoring' },
+          { icon: '💼', title: 'Professionals', desc: 'Prep for your next role switch with industry-specific behavioral and technical questions' },
+          { icon: '🚀', title: 'Career Changers', desc: 'Bridge the gap with targeted questions for your target role and get feedback on framing your story' },
+          { icon: '🤖', title: 'Why AI Coach?', desc: 'Available 24/7, no awkwardness, 100+ question categories, instant scoring with detailed feedback' },
+        ].map((item, i) => (
+          <div key={i} style={{
+            padding: '14px 16px', borderRadius: 'var(--radius-lg)',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+          }}>
+            <div style={{ fontSize: 22, marginBottom: 6 }}>{item.icon}</div>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>{item.title}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>{item.desc}</div>
+          </div>
+        ))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 20, alignItems: 'start' }}>

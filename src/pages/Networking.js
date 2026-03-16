@@ -18,7 +18,7 @@ import { UserPlus, MessageSquare, Eye, TrendingUp, Settings, Play, Square, Chevr
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { startPipeline, stopPipeline, isPipelineRunning } from '../agents/pipelineRunner';
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+const BACKEND = (process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000').replace(/\/+$/, '');
 
 const DEFAULT_TEMPLATES = [
   {

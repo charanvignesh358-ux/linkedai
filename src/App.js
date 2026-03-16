@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
@@ -58,19 +58,23 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-const AppContent = () => (
-  <div className="app-layout">
-    <Sidebar />
-    <div className="main-content">
-      <Topbar />
-      <ErrorBoundary>
-        <PageRouter />
-      </ErrorBoundary>
+const AppContent = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  return (
+    <div className="app-layout">
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <div className="main-content">
+        <Topbar onMenuToggle={() => setSidebarOpen(v => !v)} />
+        <ErrorBoundary>
+          <PageRouter />
+        </ErrorBoundary>
+      </div>
+      <FirebaseStatus />
+      <ToastContainer position="bottom-right" autoClose={4000} theme="dark" style={{ fontSize: 13 }} />
     </div>
-    <FirebaseStatus />
-    <ToastContainer position="bottom-right" autoClose={4000} theme="dark" style={{ fontSize: 13 }} />
-  </div>
-);
+  );
+};
 
 // ── Auth gate: shows login page until signed in ─────────────────
 const AuthGate = () => {
@@ -84,8 +88,8 @@ const AuthGate = () => {
       }}>
         <div style={{
           width: 52, height: 52,
-          background: 'linear-gradient(135deg, rgba(0,200,255,0.15), rgba(123,63,255,0.15))',
-          border: '1px solid rgba(0,200,255,0.3)', borderRadius: 16,
+          background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.15))',
+          border: '1px solid rgba(59,130,246,0.3)', borderRadius: 16,
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26,
           animation: 'breathe 1.5s ease-in-out infinite',
         }}>

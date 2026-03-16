@@ -13,13 +13,17 @@ import {
   ChevronRight, RefreshCw, Sparkles, Target,
   PenTool, Hash, ArrowUpRight, Star, Filter, Plus,
   Download, Loader, Wifi, WifiOff, ExternalLink,
-  X, AlertTriangle, RotateCcw
+  X, AlertTriangle, RotateCcw, ImagePlus, Video, Upload
 } from 'lucide-react';
+
+// ── Cloudinary config (reuse from Resumes) ────────────────────────
+const CLOUDINARY_CLOUD_NAME = 'dp995t0rs';
+const CLOUDINARY_UPLOAD_PRESET = 'sjktua8o';
 
 const GROQ_KEY = process.env.REACT_APP_GROQ_KEY || '';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL    = 'llama-3.3-70b-versatile';
-const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+const BACKEND = (process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000').replace(/\/+$/, '');
 
 async function groq(system, user, maxTokens = 800) {
   const res = await fetch(GROQ_URL, {
@@ -367,6 +371,12 @@ const ContentStudio = () => {
   const [scheduleTime,    setScheduleTime]    = useState('09:00');
   const [scheduledPosts,  setScheduledPosts]  = useState([]);
 
+  // ── Media upload state ──
+  const [mediaFile,       setMediaFile]       = useState(null); // { url, type, name, preview }
+  const [uploadingMedia,  setUploadingMedia]  = useState(false);
+  const [uploadMediaErr,  setUploadMediaErr]  = useState('');
+  const mediaInputRef = useRef(null);
+
   // ── Comment/Lead actions ──
   const [generatingReply, setGeneratingReply] = useState(null);
   const [fetchingLeads,   setFetchingLeads]   = useState(false);
@@ -528,18 +538,46 @@ const ContentStudio = () => {
     try {
       const toneObj   = TONES.find(t => t.id === selectedTone);
       const formatObj = FORMATS.find(f => f.id === selectedFormat);
+      const mediaCtx  = mediaFile
+        ? `\n\nMedia: A ${mediaFile.type} called "${mediaFile.name}" will accompany this post. Reference the visual naturally.`
+        : '';
       const result    = await groq(
         `You are a world-class LinkedIn content strategist. Write viral LinkedIn posts. Use short lines, 3-5 emojis naturally placed, end with a question/CTA. No hashtags in body — 3 hashtags at end only. Max 1300 chars.`,
-        `Post about: "${topic}"\nTone: ${toneObj?.label}\nFormat: ${formatObj?.label}\n${activeHook ? `Start hook: "${activeHook}"` : ''}`,
+        `Post about: "${topic || mediaFile?.name}"\nTone: ${toneObj?.label}\nFormat: ${formatObj?.label}\n${activeHook ? `Start hook: "${activeHook}"` : ''}${mediaCtx}`,
         800
       );
       setGeneratedPost(result);
-      addNotification({ type: 'success', message: `✨ Post generated for: "${topic.slice(0, 30)}..."`, time: 'just now' });
+      addNotification({ type: 'success', message: `✨ Post generated${mediaFile ? ' with media' : ''}: "${(topic || mediaFile?.name || '').slice(0, 30)}..."`, time: 'just now' });
     } catch (err) {
       setGeneratedPost('❌ Generation failed — check connection and try again.');
     }
     setGenerating(false);
-  }, [topic, selectedTone, selectedFormat, activeHook, addNotification]);
+  }, [topic, selectedTone, selectedFormat, activeHook, mediaFile, addNotification]);
+
+  // ── Upload media to Cloudinary ────────────────────────────
+  const uploadMedia = useCallback(async (file) => {
+    if (!file) return;
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    if (!isImage && !isVideo) { setUploadMediaErr('Only images or videos allowed.'); return; }
+    if (file.size > 50 * 1024 * 1024) { setUploadMediaErr('File must be under 50MB.'); return; }
+    setUploadingMedia(true); setUploadMediaErr('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+      formData.append('folder', 'linkedin_content');
+      const resourceType = isVideo ? 'video' : 'image';
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || 'Upload failed');
+      setMediaFile({ url: data.secure_url, type: isVideo ? 'video' : 'image', name: file.name, preview: data.secure_url });
+      addNotification({ type: 'success', message: `🖼️ ${isVideo ? 'Video' : 'Photo'} uploaded! AI will reference it in your post.`, time: 'just now' });
+    } catch (err) {
+      setUploadMediaErr(err.message || 'Upload failed');
+      setMediaFile({ url: URL.createObjectURL(file), type: isVideo ? 'video' : 'image', name: file.name, preview: URL.createObjectURL(file), localOnly: true });
+    } finally { setUploadingMedia(false); }
+  }, [addNotification]);
 
   const copyPost = useCallback(() => {
     navigator.clipboard.writeText(generatedPost);
@@ -679,7 +717,52 @@ const ContentStudio = () => {
               </div>
             </div>
 
-            <button className="btn btn-primary btn-lg w-full" onClick={generatePost} disabled={generating || !topic.trim()}>
+            {/* ── Media Upload ── */}
+            <div className="card" style={{ border: '1px dashed rgba(0,200,255,0.25)', background: 'rgba(0,200,255,0.03)' }}>
+              <div className="card-header" style={{ padding: '12px 16px' }}>
+                <div className="card-title" style={{ fontSize: 13 }}><ImagePlus size={14} /> Add Photo / Video (optional)</div>
+                {mediaFile && (
+                  <button onClick={() => { setMediaFile(null); setUploadMediaErr(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={14} /></button>
+                )}
+              </div>
+              <div style={{ padding: '12px 16px' }}>
+                <input ref={mediaInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }}
+                  onChange={e => uploadMedia(e.target.files[0])} />
+                {!mediaFile && !uploadingMedia && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-secondary btn-sm" style={{ flex: 1, fontSize: 11 }} onClick={() => mediaInputRef.current?.click()}>
+                      <Upload size={12} /> Upload Photo
+                    </button>
+                    <button className="btn btn-secondary btn-sm" style={{ flex: 1, fontSize: 11 }} onClick={() => mediaInputRef.current?.click()}>
+                      <Video size={12} /> Upload Video
+                    </button>
+                  </div>
+                )}
+                {uploadingMedia && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--accent-cyan)' }}>
+                    <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Uploading...
+                  </div>
+                )}
+                {uploadMediaErr && (
+                  <div style={{ fontSize: 11, color: 'var(--accent-red)', marginTop: 6 }}>⚠️ {uploadMediaErr}</div>
+                )}
+                {mediaFile && (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    {mediaFile.type === 'image' ? (
+                      <img src={mediaFile.preview} alt={mediaFile.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                    ) : (
+                      <div style={{ width: 60, height: 60, borderRadius: 8, background: 'rgba(123,63,255,0.1)', border: '1px solid rgba(123,63,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🎬</div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mediaFile.name}</div>
+                      <div style={{ fontSize: 10, color: 'var(--accent-green)', marginTop: 2 }}>✅ {mediaFile.localOnly ? 'Ready (local)' : 'Uploaded'} — AI will reference this</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button className="btn btn-primary btn-lg w-full" onClick={generatePost} disabled={generating || (!topic.trim() && !mediaFile)}>
               {generating ? <><Loader size={15} style={{ animation: 'spin 1s linear infinite' }} /> Generating...</> : <><Wand2 size={15} /> Generate LinkedIn Post</>}
             </button>
           </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { Bell } from 'lucide-react';
+import { Bell, Menu } from 'lucide-react';
 
 const pageTitles = {
   dashboard:    'Dashboard',
@@ -18,13 +18,12 @@ const pageTitles = {
   chatbot:      'Application Bot',
 };
 
-const Topbar = () => {
+const Topbar = ({ onMenuToggle }) => {
   const { activePage, notifications, unreadCount, markAllRead } = useApp();
   const { currentUser, userProfile } = useAuth();
   const [showNotifs, setShowNotifs] = useState(false);
   const notifRef = useRef(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     if (!showNotifs) return;
     const handler = (e) => {
@@ -38,7 +37,6 @@ const Topbar = () => {
 
   const notifIcon = { success: '✅', info: '💡', warning: '⚠️', error: '❌' };
 
-  // Derive initials from display name or email
   const initials = (userProfile?.displayName || currentUser?.email || 'U')
     .split(/[\s@]/)
     .map(w => w[0])
@@ -50,6 +48,10 @@ const Topbar = () => {
   return (
     <header className="topbar">
       <div className="topbar-left">
+        {/* Mobile hamburger */}
+        <button className="mobile-menu-btn" onClick={onMenuToggle} aria-label="Open menu">
+          <Menu size={18} />
+        </button>
         <span className="page-breadcrumb font-mono">LinkedAI /</span>
         <h2 className="page-title">{pageTitles[activePage] || activePage}</h2>
       </div>

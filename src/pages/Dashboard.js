@@ -97,32 +97,45 @@ const Dashboard = () => {
     color: n.type === 'success' ? 'rgba(0,230,118,0.12)' : n.type === 'warning' ? 'rgba(255,184,0,0.12)' : 'rgba(0,200,255,0.12)',
   }));
 
+  // Setup completion percentage
+  const setupItems = [
+    { label: 'Account', done: !!currentUser },
+    { label: 'Firebase', done: firebaseReady },
+    { label: 'LinkedIn', done: !!userSettings?.linkedinEmail },
+    { label: 'Keywords', done: !!userSettings?.searchKeywords },
+  ];
+  const setupDone = setupItems.filter(i => i.done).length;
+  const allSetup = setupDone === setupItems.length;
+
   return (
     <div className="page-content animate-fade">
 
-      {/* ── DEBUG STATUS BAR ── */}
+      {/* ── Setup Status Card ── */}
       <div style={{
-        background: 'rgba(0,0,0,0.4)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 10, padding: '10px 16px', marginBottom: 16,
-        display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 11,
-        fontFamily: 'monospace',
+        background: allSetup ? 'rgba(34,197,94,0.05)' : 'rgba(245,158,11,0.05)',
+        border: `1px solid ${allSetup ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)'}`,
+        borderRadius: 10, padding: '12px 16px', marginBottom: 16,
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10,
       }}>
-        <span style={{ color: currentUser ? '#00e676' : '#ff3b5c' }}>
-          {currentUser ? '✅ Auth: ' + currentUser.email : '❌ Auth: Not logged in'}
+        <span style={{ fontSize: 12, fontWeight: 600, color: allSetup ? 'var(--green)' : 'var(--amber)', marginRight: 4 }}>
+          {allSetup ? '✅ All systems ready' : `⚙️ Setup: ${setupDone}/${setupItems.length} complete`}
         </span>
-        <span style={{ color: firebaseReady ? '#00e676' : '#ffb800' }}>
-          {firebaseReady ? '✅ Firebase: Connected' : '⚠️ Firebase: ' + (firebaseError || 'Connecting...')}
-        </span>
-        <span style={{ color: userSettings?.linkedinEmail ? '#00e676' : '#ff3b5c' }}>
-          {userSettings?.linkedinEmail ? '✅ LinkedIn: ' + userSettings.linkedinEmail : '❌ LinkedIn: No credentials saved'}
-        </span>
-        <span style={{ color: userSettings?.searchKeywords ? '#00e676' : '#ffb800' }}>
-          {userSettings?.searchKeywords ? '✅ Keywords: ' + userSettings.searchKeywords.slice(0,30) + '...' : '⚠️ Keywords: Not set'}
-        </span>
-        <span style={{ color: '#7a8fbb' }}>
-          Stats in DB → Jobs: {stats.jobsFound ?? 0} | Applied: {stats.applied ?? 0} | Connections: {stats.connections ?? 0}
-        </span>
+        {setupItems.map(item => (
+          <span key={item.label} style={{
+            fontSize: 11, padding: '2px 10px', borderRadius: 20,
+            background: item.done ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)',
+            color: item.done ? 'var(--green)' : 'var(--amber)',
+            border: `1px solid ${item.done ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)'}`,
+            fontFamily: 'var(--font-mono)',
+          }}>
+            {item.done ? '✓' : '○'} {item.label}
+          </span>
+        ))}
+        {!userSettings?.linkedinEmail && (
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+            → Go to <strong style={{ color: 'var(--blue-light)' }}>Settings</strong> to add LinkedIn credentials
+          </span>
+        )}
       </div>
 
       {/* ── Firebase connection banner ── */}

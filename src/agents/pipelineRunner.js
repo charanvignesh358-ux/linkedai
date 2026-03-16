@@ -8,7 +8,7 @@
 // ================================================================
 
 // FIX #8: configurable backend URL via env var
-const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+const BACKEND = (process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000').replace(/\/+$/, '');
 
 let _xhr     = null;
 let _running = false;

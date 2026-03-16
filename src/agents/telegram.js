@@ -1,11 +1,12 @@
 // ================================================================
 //  telegram.js — Telegram sender via Cloudflare Worker relay
+//  FIXED: Plain text only — no <b>, </b>, <i> HTML tags.
 // ================================================================
 
 const RELAY_URL = 'https://shiny-mountain-c7b9.charanvignesh358.workers.dev';
 
 /**
- * Send a message via Cloudflare Worker relay
+ * Send a plain-text message via Cloudflare Worker relay
  */
 export async function sendTelegramMessage(token, chatId, text) {
   if (!token || !chatId) throw new Error('Missing token or chatId');
@@ -17,6 +18,7 @@ export async function sendTelegramMessage(token, chatId, text) {
       token:  token.trim(),
       chatId: String(chatId).trim(),
       text:   text,
+      // NO parse_mode — keeps messages as clean plain text
     }),
   });
 
@@ -39,18 +41,18 @@ export async function sendTelegramMessage(token, chatId, text) {
 }
 
 /**
- * Test message
+ * Test message — clean plain text, no HTML
  */
 export async function testTelegramBot(token, chatId) {
   const msg = [
-    `🤖 LinkedAI Bot Connected!`,
-    ``,
-    `Your Telegram notifications are working!`,
-    `You will receive alerts for:`,
-    `- Job applications`,
-    `- Connection requests`,
-    `- Pipeline completions`,
-    ``,
+    '🤖 LinkedAI Bot Connected!',
+    '',
+    'Your Telegram notifications are working!',
+    'You will receive alerts for:',
+    '  - Job applications',
+    '  - Connection requests',
+    '  - Pipeline completions',
+    '',
     new Date().toLocaleString(),
   ].join('\n');
 
@@ -58,7 +60,7 @@ export async function testTelegramBot(token, chatId) {
 }
 
 /**
- * Pipeline complete summary
+ * Pipeline complete summary — clean plain text
  */
 export async function notifyPipelineComplete(token, chatId, results) {
   if (!token || !chatId) return;
@@ -70,11 +72,11 @@ export async function notifyPipelineComplete(token, chatId, results) {
 
   const msg = [
     `${status} LinkedAI Pipeline Complete`,
-    ``,
-    `Jobs Found: ${jobsFound}`,
-    `Applied: ${applied}`,
-    `Connections Sent: ${connections}`,
-    ``,
+    '',
+    `🔭 Jobs Found: ${jobsFound}`,
+    `📝 Applied: ${applied}`,
+    `🤝 Connections Sent: ${connections}`,
+    '',
     new Date().toLocaleString(),
   ].join('\n');
 

@@ -24,7 +24,7 @@ import {
 import { startPipeline, stopPipeline, isPipelineRunning } from '../agents/pipelineRunner';
 import { notifyPipelineComplete } from '../agents/telegram';
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+const BACKEND = (process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000').replace(/\/+$/, '');
 
 // ─── UI atoms ─────────────────────────────────────────────────────
 

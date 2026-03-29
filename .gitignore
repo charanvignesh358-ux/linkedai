@@ -25,3 +25,5 @@ yarn-error.log*
 /backend/node_modules/
 /backend/error.log
 /backend/.git/
+/backend/debug_screenshots/
+/backend/*.png
